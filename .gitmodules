@@ -1,0 +1,4 @@
+[submodule "native/libxlsxwriter"]
+	path = native/libxlsxwriter
+	url = https://github.com/jmcnamara/libxlsxwriter.git
+	branch = RELEASE_1.1.5

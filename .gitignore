@@ -1,0 +1,6 @@
+# Downloaded by Installer.php at composer install/update time — never
+# commit the native binary itself, only its source (see /native) and
+# the committed bin/xlsx_writer wrapper script that execs it.
+/bin/xlsx_writer-native
+/vendor/
+/.phpunit.cache/

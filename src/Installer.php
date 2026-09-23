@@ -45,7 +45,14 @@ class Installer
             $io->writeError("<error>xlsx-writer: could not create {$binDir}</error>");
             exit(1);
         }
-        $binPath = $binDir . '/xlsx_writer';
+        // NOT bin/xlsx_writer — that name is the committed wrapper
+        // script (see bin/xlsx_writer's own docblock for why). Writing
+        // the downloaded native binary to a different filename means we
+        // never overwrite the wrapper, and Composer's "bin" linking step
+        // (which runs BEFORE this plugin event fires, and only succeeds
+        // if the file already exists) always finds something at
+        // bin/xlsx_writer regardless of whether this download has run yet.
+        $binPath = $binDir . '/xlsx_writer-native';
 
         $assetName = "xlsx_writer-{$platform}";
         $baseUrl = 'https://github.com/' . self::REPO . "/releases/download/{$version}/";
@@ -77,16 +84,28 @@ class Installer
 
     private static function detectPlatform(): ?string
     {
+        // Written as if/elseif rather than match() — match() is PHP 8.0+
+        // only, and Composer itself may run under an older PHP than the
+        // app it's installing into (this caused a ParseError on a
+        // staging box where the system `php` used to run Composer was
+        // 7.4). Composer plugins need to tolerate whatever PHP Composer
+        // itself happens to be running under.
         $os = PHP_OS_FAMILY;          // 'Linux', 'Darwin', 'Windows', ...
         $arch = php_uname('m');       // 'x86_64', 'aarch64', 'arm64', ...
 
-        return match (true) {
-            $os === 'Linux' && $arch === 'x86_64' => 'linux-x86_64',
-            $os === 'Linux' && in_array($arch, ['aarch64', 'arm64'], true) => 'linux-arm64',
-            $os === 'Darwin' && $arch === 'x86_64' => 'darwin-x86_64',
-            $os === 'Darwin' && $arch === 'arm64' => 'darwin-arm64',
-            default => null,
-        };
+        if ($os === 'Linux' && $arch === 'x86_64') {
+            return 'linux-x86_64';
+        }
+        if ($os === 'Linux' && in_array($arch, ['aarch64', 'arm64'], true)) {
+            return 'linux-arm64';
+        }
+        if ($os === 'Darwin' && $arch === 'x86_64') {
+            return 'darwin-x86_64';
+        }
+        if ($os === 'Darwin' && $arch === 'arm64') {
+            return 'darwin-arm64';
+        }
+        return null;
     }
 
     private static function fetch($io, string $url): string

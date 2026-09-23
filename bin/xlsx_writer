@@ -1,0 +1,56 @@
+#!/usr/bin/env php
+<?php
+/**
+ * This file is committed to git (unlike xlsx_writer-native, which is
+ * downloaded by Installer.php and gitignored) for one specific reason:
+ *
+ * Composer links composer.json's "bin" entries into vendor/bin/ as one
+ * of the LAST steps of installing a package — but it does that BEFORE
+ * this package's own plugin (Plugin.php -> Installer.php) gets a chance
+ * to run and download the real native binary. If composer.json's "bin"
+ * pointed straight at the downloaded file, the very first `composer
+ * require`/`composer update` would always print:
+ *
+ *   Skipped installation of bin bin/xlsx_writer for package
+ *   mikeleeman/libxlsxwriter-wrapper-ly: file not found in package
+ *
+ * — because that file genuinely doesn't exist yet at the moment Composer
+ * checks for it, even though the plugin downloads it moments later in
+ * the same command. So "bin" points at THIS file instead, which always
+ * exists (it's in git), and this file's only job is to find and exec
+ * the real native binary once it's actually there.
+ */
+
+$real = __DIR__ . '/xlsx_writer-native';
+
+if (!is_file($real) || !is_executable($real)) {
+    fwrite(STDERR, "xlsx_writer: native binary not found at {$real}.\n");
+    fwrite(STDERR, "Run: composer update mikeleeman/libxlsxwriter-wrapper-ly\n");
+    exit(1);
+}
+
+$args = array_slice($argv, 1);
+
+// pcntl_exec() replaces this process's image entirely with the native
+// binary when available — cleanest option (stdio, exit code, signals
+// all become exactly the native binary's, nothing proxied). It only
+// returns on failure. Falls back to proc_open() if pcntl isn't loaded
+// (not a default extension on every distro).
+if (function_exists('pcntl_exec')) {
+    pcntl_exec($real, $args);
+    fwrite(STDERR, "xlsx_writer: failed to exec {$real}\n");
+    exit(1);
+}
+
+$process = proc_open(
+    array_merge([$real], $args),
+    [0 => STDIN, 1 => STDOUT, 2 => STDERR],
+    $pipes
+);
+
+if (!is_resource($process)) {
+    fwrite(STDERR, "xlsx_writer: failed to start {$real}\n");
+    exit(1);
+}
+
+exit(proc_close($process));

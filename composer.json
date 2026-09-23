@@ -3,9 +3,14 @@
     "description": "Static libxlsxwriter-backed NDJSON-to-xlsx binary, installed automatically via a Composer plugin.",
     "type": "composer-plugin",
     "license": "MIT",
-    "keywords": ["xlsx", "excel", "libxlsxwriter", "spreadsheet"],
+    "keywords": [
+        "xlsx",
+        "excel",
+        "libxlsxwriter",
+        "spreadsheet"
+    ],
     "require": {
-        "php": "^7.4",
+        "php": "^7.4 || ^8.0",
         "composer-plugin-api": "^2.0"
     },
     "require-dev": {
