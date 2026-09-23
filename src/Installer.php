@@ -26,9 +26,10 @@ class Installer
     {
         $io = $event->getIO();
 
-        $extra = $event->getComposer()->getPackage()->getExtra();
-        $version = getenv('XLSX_WRITER_BINARY_VERSION')
-            ?: ($extra['xlsx-writer-binary-version'] ?? 'v1.0.0');
+        $ownComposerJson = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true) ?? [];
+		$extra = $ownComposerJson['extra'] ?? [];
+		$version = getenv('XLSX_WRITER_BINARY_VERSION')
+			?: ($extra['xlsx-writer-binary-version'] ?? 'v1.0.0');
 
         $platform = self::detectPlatform();
         if ($platform === null) {
