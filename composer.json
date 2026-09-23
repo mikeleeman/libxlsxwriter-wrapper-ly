@@ -26,6 +26,6 @@
     ],
     "extra": {
         "class": "Ly\\XlsxWriterWrapper\\Plugin",
-        "xlsx-writer-binary-version": "v1.0.5"
+        "xlsx-writer-binary-version": "v1.0.4"
     }
 }
