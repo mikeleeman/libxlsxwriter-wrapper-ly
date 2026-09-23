@@ -1,0 +1,35 @@
+{
+    "name": "mikeleeman/libxlsxwriter-wrapper-ly",
+    "description": "Static libxlsxwriter-backed NDJSON-to-xlsx binary, with a Composer-managed install.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["xlsx", "excel", "libxlsxwriter", "spreadsheet"],
+    "require": {
+        "php": "^8.1",
+        "composer-plugin-api": "^2.0"
+    },
+    "require-dev": {
+        "composer/composer": "^2.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ly\\XlsxWriterWrapper\\": "src/"
+        }
+    },
+    "bin": [
+        "bin/xlsx_writer"
+    ],
+    "extra": {
+        "xlsx-writer-binary-version": "v1.0.0"
+    },
+    "scripts": {
+        "post-install-cmd": "Ly\\XlsxWriterWrapper\\Installer::install",
+        "post-update-cmd": "Ly\\XlsxWriterWrapper\\Installer::install",
+        "xlsx-writer:install": "Ly\\XlsxWriterWrapper\\Installer::install"
+    },
+    "config": {
+        "allow-plugins": {
+            "mikeleeman/libxlsxwriter-wrapper-ly": true
+        }
+    }
+}
