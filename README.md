@@ -1,9 +1,8 @@
 # mikeleeman/libxlsxwriter-wrapper-ly
 
-A fully static `xlsx_writer` binary (libxlsxwriter + zlib linked in, zero
-runtime dependencies — not even glibc) plus a Composer install script that
-fetches the right prebuilt binary for the host platform from this repo's
-GitHub Releases.
+A fully static `xlsx_writer` binary (libxlsxwriter + zlib + glibc all linked
+in — zero runtime dependencies) plus a Composer plugin that downloads the
+right prebuilt binary for the host platform automatically.
 
 ## Install
 
@@ -11,35 +10,58 @@ GitHub Releases.
 composer require mikeleeman/libxlsxwriter-wrapper-ly
 ```
 
-On `composer install`/`update`, `src/Installer.php` runs automatically,
-detects the host OS/arch, downloads `xlsx_writer-<platform>` from the
-GitHub Release matching `extra.xlsx-writer-binary-version` in
-`composer.json` (currently `v1.0.0`), verifies its SHA-256 against the
-published `.sha256` file, and installs it to `bin/xlsx_writer`. Composer's
-`"bin"` entry then makes it available at `vendor/bin/xlsx_writer`.
+This package is a **Composer plugin** (not a plain script hook), which is
+what lets the binary download run automatically when you `require` it —
+plain `"scripts"` entries in a dependency's own `composer.json` are
+ignored by Composer unless that dependency is the root project, so this
+had to be a real plugin. Composer 2.2+ will ask you to confirm you trust
+it the first time:
 
-If the automatic download fails (flaky network during someone else's
-`composer install`) or you switch machines/architectures, re-run it
-manually:
-
-```bash
-composer xlsx-writer:install
+```
+mikeleeman/libxlsxwriter-wrapper-ly contains a Composer plugin which is
+currently not in your allow-plugins config. See https://getcomposer.org/allow-plugins
+Do you trust "mikeleeman/libxlsxwriter-wrapper-ly" to execute code and
+run it? (writes "allow-plugins" to composer.json) [y,n,d,?]
 ```
 
-Supported platforms today: `linux-x86_64`. `linux-arm64`, `darwin-x86_64`,
-and `darwin-arm64` are recognized by the installer but need a CI job added
-(see `.github/workflows/release-binaries.yml`) before a release actually
-ships those assets — until then, the installer will warn and tell you to
-build from source instead of failing silently.
+Answer `y` interactively, or — for CI / non-interactive installs — add
+this to your **own project's** `composer.json` up front:
+
+```json
+{
+    "config": {
+        "allow-plugins": {
+            "mikeleeman/libxlsxwriter-wrapper-ly": true
+        }
+    }
+}
+```
+
+(or run `composer config allow-plugins.mikeleeman/libxlsxwriter-wrapper-ly true`).
+
+Once trusted, `composer install`/`composer update` will detect your
+OS/arch, download `xlsx_writer-<platform>` from this repo's GitHub
+Releases matching `extra.xlsx-writer-binary-version` in this package's
+`composer.json`, verify its SHA-256 against the published `.sha256`
+file, and install it to `vendor/mikeleeman/libxlsxwriter-wrapper-ly/bin/xlsx_writer`
+— which Composer's `"bin"` entry also exposes at `vendor/bin/xlsx_writer`.
+
+If the download fails partway (network hiccup) or you change machines,
+just re-run `composer update mikeleeman/libxlsxwriter-wrapper-ly` to
+retry it.
+
+Supported platforms today: `linux-x86_64`. `linux-arm64`,
+`darwin-x86_64`, and `darwin-arm64` are recognized by the installer and
+will warn cleanly (not crash) rather than fail silently if no matching
+release asset exists yet — see `.github/workflows/release-binaries.yml`
+to add those builds.
 
 ## Using it (e.g. from Laravel)
 
-Point your binary runner at the installed path:
+Point your binary runner at the installed path — typically:
 
 ```php
-new XlsxBinaryRunner(
-    binaryPath: base_path('vendor/bin/xlsx_writer'),
-);
+base_path('vendor/bin/xlsx_writer')
 ```
 
 ## Verifying a binary yourself
@@ -63,15 +85,17 @@ platform-specific build artifacts, not source.
 ## Releasing a new version
 
 1. Bump `extra.xlsx-writer-binary-version` in `composer.json` if you want
-   installs to pick up a new binary (it doesn't have to match the
-   package's own Composer version — they're decoupled on purpose, so a
-   pure-PHP fix to `Installer.php` doesn't force a binary rebuild, and
-   vice versa).
+   installs to pick up a new binary (it's decoupled from this package's
+   own Composer/Packagist version on purpose — a pure-PHP fix to
+   `Installer.php`/`Plugin.php` doesn't force a binary rebuild, and a
+   binary-only fix doesn't force a Packagist release).
 2. `git tag vX.Y.Z && git push --tags` — this is the *binary* release tag,
    matched by `on: push: tags: "v*"` in the workflow and by whatever value
    `extra.xlsx-writer-binary-version` points at.
 3. CI builds, smoke-tests, checksums, and attaches the binaries to the
    GitHub Release for that tag automatically.
-4. Tag/push a matching Composer version if you also want a Packagist
-   release (`composer.json` doesn't declare its own `"version"` — Packagist
-   reads it from the git tag at publish time).
+4. Tag/push a matching commit if you also want a new Packagist version —
+   Packagist reads the package version from git tags, independent of the
+   binary-version tags above (they can be the same tag or different ones;
+   just keep `extra.xlsx-writer-binary-version` pointed at whichever
+   release actually has binaries attached).
