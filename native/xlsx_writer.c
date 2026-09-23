@@ -87,7 +87,16 @@
 #define MAX_STR_LEN     8192
 #define MAX_STYLES      128
 #define MAX_STYLE_ID_LEN 64
-#define MAX_ARRAY_NUMS  4096
+/* Sanity ceiling only — guards against a corrupt/malicious file causing
+   unbounded memory growth. NOT a realistic limit for legitimate use:
+   the array that actually needs to grow large is page_breaks' "rows",
+   one entry per staff block, and this was previously hardcoded at 4096
+   — a real production community with 7161 staff blocks exceeded that
+   and failed with "array too long (max 4096)". Now grows dynamically
+   (see parse_value's JV_ARRAY branch) up to this much higher ceiling,
+   which no realistic staff count should ever approach. */
+#define MAX_ARRAY_NUMS  10000000
+#define ARRAY_INITIAL_CAP 64
 
 typedef enum { JV_STRING, JV_NUMBER, JV_BOOL, JV_NULL, JV_ARRAY } jval_type;
 
@@ -97,8 +106,9 @@ typedef struct {
     char str[MAX_STR_LEN];   /* used when type == JV_STRING */
     double num;              /* used when type == JV_NUMBER */
     int boolean;             /* used when type == JV_BOOL */
-    double arr[MAX_ARRAY_NUMS];
-    int arr_len;              /* used when type == JV_ARRAY */
+    double *arr;              /* used when type == JV_ARRAY; heap-allocated, grows via realloc */
+    int arr_len;
+    int arr_cap;
 } jfield;
 
 typedef struct {
@@ -197,10 +207,19 @@ static const char *parse_value(const char *p, jfield *f) {
     } else if (*p == '[') {
         f->type = JV_ARRAY;
         f->arr_len = 0;
+        f->arr_cap = ARRAY_INITIAL_CAP;
+        f->arr = malloc((size_t) f->arr_cap * sizeof(double));
+        if (!f->arr) die(1, "out of memory allocating array");
         p++;
         p = skip_ws(p);
         while (*p != ']') {
             if (f->arr_len >= MAX_ARRAY_NUMS) die(2, "array too long (max %d)", MAX_ARRAY_NUMS);
+            if (f->arr_len >= f->arr_cap) {
+                f->arr_cap *= 2;
+                double *grown = realloc(f->arr, (size_t) f->arr_cap * sizeof(double));
+                if (!grown) die(1, "out of memory growing array (was %d entries)", f->arr_len);
+                f->arr = grown;
+            }
             char *endptr;
             f->arr[f->arr_len++] = strtod(p, &endptr);
             if (endptr == p) die(2, "expected number in array");
@@ -454,10 +473,37 @@ int main(int argc, char **argv) {
             jfield *rows = find_field(&jl, "rows");
             if (!rows || rows->type != JV_ARRAY) die(2, "\"page_breaks\" missing \"rows\" array");
             if (rows->arr_len > 0) {
-                lxw_row_t *breaks = calloc(rows->arr_len + 1, sizeof(lxw_row_t));
+                /* Excel itself caps horizontal page breaks at 1023 per
+                   worksheet (libxlsxwriter's own doc comment on
+                   worksheet_set_h_pagebreaks() says so, and confirmed
+                   experimentally: it silently truncates rather than
+                   erroring, which is worse than failing loud — a caller
+                   could reasonably assume every requested break landed).
+                   This is a real .xlsx format limitation, not a bug in
+                   this program: a report with more staff blocks than
+                   that simply cannot have a forced page break at every
+                   block boundary. All DATA remains complete and correct
+                   regardless — this only affects where forced page
+                   breaks land for printing past the 1023rd one; Excel's
+                   normal automatic pagination still applies beyond that
+                   point, it just may not align exactly to a staff
+                   block's start. We clamp explicitly here (rather than
+                   silently relying on libxlsxwriter's own truncation)
+                   so this is documented in one place and doesn't waste
+                   time building an array far larger than can ever be used. */
+                int n = rows->arr_len;
+                if (n > 1023) {
+                    fprintf(stderr,
+                        "xlsx_writer: %d page breaks requested but Excel allows a maximum of "
+                        "1023 per worksheet; using the first 1023 (all row/cell DATA is still "
+                        "complete — only print-pagination past that point is affected)\n",
+                        n);
+                    n = 1023;
+                }
+                lxw_row_t *breaks = calloc((size_t) n + 1, sizeof(lxw_row_t));
                 if (!breaks) die(1, "out of memory building page breaks");
-                for (int i = 0; i < rows->arr_len; i++) breaks[i] = (lxw_row_t) rows->arr[i];
-                breaks[rows->arr_len] = 0; /* 0-terminated per libxlsxwriter convention */
+                for (int i = 0; i < n; i++) breaks[i] = (lxw_row_t) rows->arr[i];
+                breaks[n] = 0; /* 0-terminated per libxlsxwriter convention */
                 lxw_error err = worksheet_set_h_pagebreaks(ws, breaks);
                 free(breaks);
                 if (err != LXW_NO_ERROR) die(3, "set_h_pagebreaks failed: %s", lxw_strerror(err));

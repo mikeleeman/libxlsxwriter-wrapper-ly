@@ -26,10 +26,20 @@ class Installer
     {
         $io = $event->getIO();
 
+        // NOT $event->getComposer()->getPackage()->getExtra() — that
+        // returns the ROOT project's package (the consuming app), not
+        // this library's own package, so it was silently falling
+        // through to the 'v1.0.0' default below no matter what
+        // xlsx-writer-binary-version was actually set to here. Reading
+        // our own composer.json straight off disk instead: dirname(__DIR__)
+        // from src/Installer.php is this package's own root (where
+        // Composer always places a copy of composer.json for the
+        // installed package), so there's no ambiguity about which
+        // package's metadata this is.
         $ownComposerJson = json_decode(file_get_contents(dirname(__DIR__) . '/composer.json'), true) ?? [];
-		$extra = $ownComposerJson['extra'] ?? [];
-		$version = getenv('XLSX_WRITER_BINARY_VERSION')
-			?: ($extra['xlsx-writer-binary-version'] ?? 'v1.0.0');
+        $extra = $ownComposerJson['extra'] ?? [];
+        $version = getenv('XLSX_WRITER_BINARY_VERSION')
+            ?: ($extra['xlsx-writer-binary-version'] ?? 'v1.0.0');
 
         $platform = self::detectPlatform();
         if ($platform === null) {
