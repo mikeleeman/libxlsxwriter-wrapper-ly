@@ -114,6 +114,21 @@ typedef struct {
 static style_entry g_styles[MAX_STYLES];
 static int g_nstyles = 0;
 
+/* pageOrientationLandscape()/pageFitToWidth()/pageFitToHeight() on the
+ * PHP side each emit their OWN "page_setup" line (to mirror the old
+ * FastExcelWriter call shape with minimal changes at the call site).
+ * fit_w and fit_h therefore arrive on separate lines. worksheet_fit_to_
+ * pages() takes both at once and isn't additive across calls, so calling
+ * it immediately per-line meant the last call (fit_h, with no fit_w key,
+ * defaulting to 0) silently overwrote an earlier fit_w=1 with 0 — real
+ * bug, caught by inspecting actual output ("fitToWidth=\"0\"" in a real
+ * generated file instead of the expected "1"). Fixed by accumulating
+ * across every "page_setup" line seen and applying once, right before
+ * workbook_close(). */
+static int g_fit_w = 0;
+static int g_fit_h = 0;
+static int g_fit_pages_set = 0;
+
 static int g_line_no = 0;
 
 static void die(int code, const char *fmt, ...) {
@@ -376,9 +391,13 @@ int main(int argc, char **argv) {
             if (!ws) die(2, "\"page_setup\" before \"workbook\"");
             const char *orientation = field_str(&jl, "orientation", "portrait");
             if (strcmp(orientation, "landscape") == 0) worksheet_set_landscape(ws);
-            int fit_w = (int) field_num(&jl, "fit_w", 0);
-            int fit_h = (int) field_num(&jl, "fit_h", 0);
-            if (fit_w > 0 || fit_h > 0) worksheet_fit_to_pages(ws, fit_w, fit_h);
+            /* Only update fit_w/fit_h if THIS line actually specifies
+               them — accumulate across calls rather than resetting
+               unset fields back to 0 (see comment on the globals above). */
+            jfield *fw = find_field(&jl, "fit_w");
+            jfield *fh = find_field(&jl, "fit_h");
+            if (fw && fw->type == JV_NUMBER) { g_fit_w = (int) fw->num; g_fit_pages_set = 1; }
+            if (fh && fh->type == JV_NUMBER) { g_fit_h = (int) fh->num; g_fit_pages_set = 1; }
 
         } else if (strcmp(op, "col_widths") == 0) {
             if (!ws) die(2, "\"col_widths\" before \"workbook\"");
@@ -463,6 +482,10 @@ int main(int argc, char **argv) {
         if (wb) workbook_close(wb); /* still free libxlsxwriter's memory */
         fprintf(stderr, "xlsx_writer: input ended without terminating {\"op\":\"end\"} — truncated stream\n");
         return 4;
+    }
+
+    if (g_fit_pages_set) {
+        worksheet_fit_to_pages(ws, g_fit_w, g_fit_h); /* void return */
     }
 
     lxw_error err = workbook_close(wb);
