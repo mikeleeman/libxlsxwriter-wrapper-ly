@@ -40,12 +40,14 @@
  *
  * {"op":"style","id":"standard_body","sz":7,"b":false,
  *   "ba":true,"bt":false,"br":false,"bl":false,"bb":false,
- *   "bc":"#000000","wrap":true,"align":"center","valign":"center"}
+ *   "bc":"#000000","wrap":true,"align":"center","valign":"center",
+ *   "fill":"#808080"}
  *     Defines a named style. Must appear before any "cell" line that
  *     references it. "ba" (border-all) implies all four sides; the
  *     per-side bt/br/bl/bb flags are used when ba is false/omitted.
  *     align/valign: "center" | "left" | "right" (align only) |
  *     "top" | "center" | "bottom" (valign only). Omit for default.
+ *     "fill": solid background color (hex). Omit for no fill.
  *
  * {"op":"row_height","row":12,"h":25}
  *     0-indexed row.
@@ -65,6 +67,14 @@
  *     — libxlsxwriter treats the break as occurring *after* the given
  *     row, which should match the existing getAccumulatedRowIndex()
  *     math, but confirm against a known-good export once.
+ *
+ * {"op":"protect","password":"secret"}
+ *     Locks the sheet against editing in Excel (worksheet_protect()).
+ *     "password" is optional; omit or use "" for protection with no
+ *     unlock password. NOTE: this is Excel's ordinary sheet-protection
+ *     password, not encryption — it stops accidental edits in Excel's
+ *     UI, not a determined person with the file. Order doesn't matter
+ *     relative to cell/style ops, but must come after "workbook".
  *
  * {"op":"end"}
  *     Must be the last line. Its absence is treated as a truncated
@@ -318,6 +328,15 @@ static void handle_style(lxw_workbook *wb, jline *jl) {
     if (field_bool(jl, "b", 0)) format_set_bold(fmt);
     if (field_bool(jl, "wrap", 0)) format_set_text_wrap(fmt);
 
+    /* Solid background fill, e.g. {"fill":"#808080"}. Needs both a
+       pattern (solid) and the color — a bg_color alone does nothing in
+       OOXML without a pattern set. */
+    const char *fill = field_str(jl, "fill", NULL);
+    if (fill) {
+        format_set_pattern(fmt, LXW_PATTERN_SOLID);
+        format_set_bg_color(fmt, parse_hex_color(fill));
+    }
+
     const char *align = field_str(jl, "align", NULL);
     if (align) {
         if (strcmp(align, "center") == 0) format_set_align(fmt, LXW_ALIGN_CENTER);
@@ -508,6 +527,24 @@ int main(int argc, char **argv) {
                 free(breaks);
                 if (err != LXW_NO_ERROR) die(3, "set_h_pagebreaks failed: %s", lxw_strerror(err));
             }
+
+        } else if (strcmp(op, "protect") == 0) {
+            if (!ws) die(2, "\"protect\" before \"workbook\"");
+            /* Locks the sheet against editing — worksheet_protect() with
+               NULL options respects each cell's `locked` property, which
+               defaults to locked=1 for every cell in a fresh workbook,
+               so this alone protects the whole sheet without needing to
+               touch individual cell formats. "password" is optional —
+               omit it (or pass "") for protection with no password
+               (still blocks editing in Excel's UI, just has no unlock
+               password prompt). Per libxlsxwriter's own doc comment:
+               this is Excel's standard sheet-protection password, which
+               is NOT encryption and is trivially removable by anyone
+               with the right tool — it stops accidental edits in Excel's
+               UI, not a determined person with the file. */
+            const char *password = field_str(&jl, "password", NULL);
+            if (password && password[0] == '\0') password = NULL;
+            worksheet_protect(ws, password, NULL);
 
         } else if (strcmp(op, "end") == 0) {
             saw_end = 1;
