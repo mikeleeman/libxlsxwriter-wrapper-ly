@@ -41,13 +41,17 @@
  * {"op":"style","id":"standard_body","sz":7,"b":false,
  *   "ba":true,"bt":false,"br":false,"bl":false,"bb":false,
  *   "bc":"#000000","wrap":true,"align":"center","valign":"center",
- *   "fill":"#808080"}
+ *   "fill":"#808080","nf":"0.00"}
  *     Defines a named style. Must appear before any "cell" line that
  *     references it. "ba" (border-all) implies all four sides; the
  *     per-side bt/br/bl/bb flags are used when ba is false/omitted.
  *     align/valign: "center" | "left" | "right" (align only) |
  *     "top" | "center" | "bottom" (valign only). Omit for default.
  *     "fill": solid background color (hex). Omit for no fill.
+ *     "nf": Excel number format string (e.g. "0.00", "0.0000",
+ *     "#,##0.00"), mapped to format_set_num_format(). Only affects
+ *     numeric cells; text cells using the same style are unchanged.
+ *     Omit for Excel's default "General" format.
  *
  * {"op":"row_height","row":12,"h":25}
  *     0-indexed row.
@@ -336,6 +340,13 @@ static void handle_style(lxw_workbook *wb, jline *jl) {
         format_set_pattern(fmt, LXW_PATTERN_SOLID);
         format_set_bg_color(fmt, parse_hex_color(fill));
     }
+
+    /* Number format, e.g. {"nf":"0.00"}. Lets numeric cells keep fixed
+       decimals (8.00 instead of General's 8) now that DB DECIMAL values
+       are written as real numbers rather than text. Has no effect on
+       text cells sharing the same style. */
+    const char *nf = field_str(jl, "nf", NULL);
+    if (nf && nf[0] != '\0') format_set_num_format(fmt, nf);
 
     const char *align = field_str(jl, "align", NULL);
     if (align) {
